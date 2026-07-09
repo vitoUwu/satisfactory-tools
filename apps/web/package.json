@@ -5,19 +5,26 @@
   "scripts": {
     "build": "vite build",
     "serve": "vite preview",
-    "dev": "vite dev"
+    "dev": "vite dev",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@libsql/client": "catalog:",
+    "@satisfactory-tools/db": "workspace:*",
     "@satisfactory-tools/env": "workspace:*",
+    "@satisfactory-tools/game-data": "workspace:*",
+    "@satisfactory-tools/planner-engine": "workspace:*",
     "@satisfactory-tools/ui": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "@tailwindcss/vite": "^4.3.2",
+    "@xyflow/react": "^12.8.2",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-router": "^1.170.17",
     "@tanstack/react-start": "^1.168.27",
     "cmdk": "^1.1.1",
     "dotenv": "catalog:",
+    "elkjs": "^0.10.0",
     "embla-carousel-react": "^8.6.0",
     "libsql": "catalog:",
     "lucide-react": "catalog:",

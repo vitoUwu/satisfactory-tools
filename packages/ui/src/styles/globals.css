@@ -175,3 +175,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * Flowing Belt/Pipe edges (ADR-0003). BeltPipeEdge draws a dashed connection with
+ * `stroke-dasharray: 6 4` (period 10) and applies `animate-[dashdraw_...]`; this
+ * keyframe scrolls the dashes from source to target (negative offset advances along
+ * the path direction).
+ */
+@keyframes dashdraw {
+  to {
+    stroke-dashoffset: -10;
+  }
+}

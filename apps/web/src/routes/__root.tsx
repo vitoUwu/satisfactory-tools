@@ -38,7 +38,7 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
-        <div className="grid h-svh grid-rows-[auto_1fr]">
+        <div className="h-svh">
           <Outlet />
         </div>
         <Toaster richColors />
