@@ -19,6 +19,7 @@
   "dependencies": {
     "@libsql/client": "catalog:",
     "@satisfactory-tools/env": "workspace:*",
+    "@satisfactory-tools/planner-engine": "workspace:*",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.2",
     "libsql": "catalog:",
