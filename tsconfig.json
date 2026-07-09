@@ -1,0 +1,3 @@
+{
+  "extends": "@satisfactory-tools/config/tsconfig.base.json"
+}
