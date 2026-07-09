@@ -14,8 +14,11 @@ A named, saved factory graph owned by the user. Created, renamed, duplicated, an
 _Avoid_: Blueprint (in-game term for a buildable object), project, design
 
 **Solver Assist**:
-A helper that, given a node, auto-expands its ingredient chain into the Plan as new nodes and connections. Assists the graph; never replaces manual editing.
+A helper that, given a node, auto-expands its ingredient chain into the Plan as new nodes and connections, choosing recipes via the Plan's Recipe Preferences. Assists the graph; never replaces manual editing.
 _Avoid_: Calculator, optimizer
+
+**Recipe Preference**:
+A per-Plan mapping of item → chosen recipe, defaulting to the item's standard (non-alternate) recipe. Consulted by the Solver Assist; changeable at any time.
 
 ### Graph
 
@@ -52,6 +55,17 @@ _Avoid_: Machine power %, overclock (that's only the >100% case)
 Production amplifier slotted into a machine. A fully slotted machine doubles output and quadruples power draw.
 _Avoid_: Amplifier
 
+**Efficiency**:
+The percentage of its nominal (clock-adjusted) rate a Machine actually achieves at steady state, limited by both what its inputs can sustain and what its connected outputs can drain (back-pressure included). An unconnected output port never limits Efficiency — it drains freely as Unplanned Surplus.
+_Avoid_: Utilization, uptime
+
+**Unplanned Surplus**:
+Production that drains through unconnected output ports — made by the Plan but not routed anywhere. Surfaced in the Plan totals so nothing silently disappears while a Plan is under construction.
+_Avoid_: Waste, overflow (overflow is a Splitter routing behavior)
+
+**Bottleneck**:
+A node or connection whose capacity limit forces other machines in the Plan below 100% Efficiency.
+
 **Power Balance**:
 The net MW of a Plan: power produced by Generators minus power drawn by all other machines, clock-speed and Somersloop adjusted. Power is one global pool per Plan; there is no grid topology.
 
@@ -61,5 +75,8 @@ A Machine that consumes fuel items via normal flow and contributes MW to the Pow
 ### Data
 
 **Game Dataset**:
-The static, typed set of items, recipes, and buildings parsed from the game's official Docs.json dump, versioned to a specific game release (currently 1.2). The single source of truth for all game data in the app.
+The static, typed set of items, recipes, and buildings parsed from the game's official Docs.json dump for one specific game release (e.g. 1.2). All released versions are kept; each Plan pins the version it was built against.
 _Avoid_: Wiki data, game files
+
+**Plan Migration**:
+The explicit act of moving a Plan to a newer Game Dataset version. Changed ratios recompute; removed recipes or buildings flag their nodes as broken for the user to fix. Never happens implicitly on load.

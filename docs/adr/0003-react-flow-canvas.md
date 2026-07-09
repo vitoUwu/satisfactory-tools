@@ -1,0 +1,3 @@
+# React Flow (@xyflow/react) is the Planner canvas
+
+The Planner needs draggable nodes, typed connection ports, edge validation, animated edges, zoom/pan, and a minimap. React Flow provides all of these as built-ins, is MIT-licensed and React 19 compatible, and lets nodes be ordinary React components (shadcn-styled machine cards with game icons). The animation ambition is "flowing edges + polish", not per-item sprite simulation, so a game-engine-style canvas (PixiJS/WebGL) is unnecessary. The graph model and all custom node/edge components will be shaped by React Flow's APIs, so swapping later would mean rewriting the Planner's entire UI layer.
