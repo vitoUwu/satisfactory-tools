@@ -1,0 +1,24 @@
+{
+  "name": "@satisfactory-tools/game-data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "parse": "bun run scripts/parse-docs.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@satisfactory-tools/config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}
