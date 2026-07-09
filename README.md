@@ -1,5 +1,7 @@
 # satisfactory-tools
 
+A **personal, non-commercial fan project**: a suite of planning tools for the game [Satisfactory](https://www.satisfactorygame.com/), starting with an interactive factory planner (drag-and-drop machines, belts/pipes, live throughput and power calculations). Not affiliated with, endorsed by, or sponsored by Coffee Stain Studios. See [Legal](#legal).
+
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Start, Self, and more.
 
 ## Features
@@ -112,3 +114,12 @@ satisfactory-tools/
 - `bun run docker:up`: Build and start the Docker Compose stack
 - `bun run docker:logs`: Tail logs from the Docker Compose stack
 - `bun run docker:down`: Stop the Docker Compose stack
+
+## Legal
+
+This is an unofficial, personal, non-commercial fan project. It is not affiliated with, endorsed by, sponsored by, or approved by Coffee Stain Studios or Coffee Stain Publishing.
+
+- **Satisfactory** and all related names, game data, and imagery are trademarks and/or copyrights of **Coffee Stain Studios AB**.
+- The game icons in `apps/web/public/game-icons/` and the game data derived from the game's `Docs.json` are the property of Coffee Stain Studios. They are included here solely to make a personal planning tool usable, in the spirit of the community's fan-content norms (wikis, calculators, planners).
+- No license to those assets is granted or implied by this repository. Do not reuse them commercially.
+- If you are a rights holder and want any content removed, open an issue and it will be taken down promptly.
