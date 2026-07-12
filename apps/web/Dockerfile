@@ -10,6 +10,9 @@ ENV NODE_ENV=production
 RUN cd apps/web && bun run build
 ENV SKIP_ENV_VALIDATION=
 
+# Dataset registry reads ../data/<version>.json relative to its SSR chunk at runtime
+RUN cp -r packages/game-data/data apps/web/.output/server/data
+
 ENV HOST=0.0.0.0
 ENV PORT=3001
 EXPOSE 3001
