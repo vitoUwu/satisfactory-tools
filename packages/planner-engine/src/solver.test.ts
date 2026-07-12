@@ -194,17 +194,20 @@ describe("computeFlows", () => {
     expect(-(r.perNode[constructor.id]?.powerMW ?? 0)).toBeCloseTo(16, 3);
   });
 
-  test("extractor rate scales with purity and clamps to belt capacity", () => {
+  test("extractor throttled by an undersized belt runs below 100%", () => {
     resetIds();
-    // Miner base 60, pure x2 = 120, but Mk1 belt clamps to 60
+    // Miner base 60, pure x2 = 120, but a Mk1 belt only carries 60. The miner can
+    // make 120, so pushing 60 through the belt means it runs at 50% — the belt is
+    // the bottleneck, and the edge is flagged over capacity (desired 120 > cap 60).
     const miner = extractor("Build_MinerMk1_C", "Desc_OreIron_C", { purity: "pure" });
     const sink = planOutput("Desc_OreIron_C", 300);
     const e = belt(miner, sink, 1); // 60/min
     const g = graph([miner, sink], [e]);
     const r = computeFlows(g, dataset);
     expect(r.perEdge[e.id]?.actualRatePerMinute).toBeCloseTo(60, 4);
-    // clamped nominal == 60, fully drained -> 100% efficiency
-    expect(eff(r, miner)).toBeCloseTo(100, 3);
+    expect(r.perEdge[e.id]?.overCapacity).toBe(true);
+    expect(eff(r, miner)).toBeCloseTo(50, 3);
+    expect(r.diagnostics.bottlenecks.some((b) => b.nodeId === miner.id)).toBe(true);
   });
 
   test("generator produces power from fuel and contributes to power balance", () => {
@@ -240,12 +243,14 @@ describe("computeFlows", () => {
     expect(r.totals.powerBalanceMW).toBeCloseTo(0, 6);
   });
 
-  test("free sink: unconnected outputs drain freely and surface as unplanned surplus", () => {
+  test("connected splitter back-pressures its source; dangling machine output free-sinks", () => {
     resetIds();
-    // The user's exact incremental-planning scenario: miner -> splitter -> smelter
-    // with the smelter's ingot output (and two splitter ports) left unconnected.
-    // Under free-sink semantics the whole chain runs at 100%; undrained items show
-    // up in totals as unplanned surplus instead of stalling the chain to 0.
+    // The user's incremental-planning scenario: miner -> splitter -> smelter with
+    // the smelter's ingot output left unconnected. A splitter with at least one
+    // output wired only pulls what its connected branches demand, so the miner
+    // back-pressures to 50% (smelter consumes 30 of the miner's 60/min capacity).
+    // The smelter's dangling ingot output still free-sinks, so the chain runs live
+    // at 100% instead of stalling to 0 while the plan is being built.
     const miner = extractor("Build_MinerMk1_C", "Desc_OreIron_C"); // normal = 60/min
     const sp = splitter();
     const smelter = machine("Build_SmelterMk1_C", "Recipe_IronIngot_C"); // 30 -> 30
@@ -253,18 +258,42 @@ describe("computeFlows", () => {
     const eB = belt(sp, smelter, 5, { sourceHandle: "out0" });
     const g = graph([miner, sp, smelter], [eA, eB]);
     const r = computeFlows(g, dataset);
-    expect(eff(r, miner)).toBeCloseTo(100, 3);
+    expect(eff(r, miner)).toBeCloseTo(50, 3);
     expect(eff(r, smelter)).toBeCloseTo(100, 3);
-    expect(r.perEdge[eA.id]?.actualRatePerMinute).toBeCloseTo(60, 4);
+    expect(r.perEdge[eA.id]?.actualRatePerMinute).toBeCloseTo(30, 4);
     expect(r.perEdge[eB.id]?.actualRatePerMinute).toBeCloseTo(30, 4);
     expect(outRate(r, smelter, "Desc_IronIngot_C")).toBeCloseTo(30, 4);
-    expect(r.diagnostics.bottlenecks).toHaveLength(0);
+    // the miner is now back-pressured (output can't fully drain), which is exactly
+    // the "why am I at 50%?" signal we want surfaced
+    expect(r.diagnostics.bottlenecks).toHaveLength(1);
+    expect(r.diagnostics.bottlenecks[0]?.nodeId).toBe(miner.id);
     const surplus = Object.fromEntries(
       r.totals.unplannedSurplus.map((s) => [s.itemClass, s.ratePerMinute]),
     );
-    // dangling smelter output + ore vanishing at the splitter's free ports
+    // only the dangling smelter output free-sinks; no ore vanishes at the splitter
     expect(surplus["Desc_IronIngot_C"]).toBeCloseTo(30, 4);
-    expect(surplus["Desc_OreIron_C"]).toBeCloseTo(30, 4);
+    expect(surplus["Desc_OreIron_C"] ?? 0).toBeCloseTo(0, 4);
+  });
+
+  test("a dead-end splitter chain back-pressures its source to 0%", () => {
+    resetIds();
+    // miner -> splitter A -> splitter B, with B's outputs all unconnected. Logistics
+    // only routes and never free-sinks, so B demands nothing, A passes that 0 demand
+    // up, and the miner has nowhere to send ore -> 0%, flagged "output cannot drain".
+    const miner = extractor("Build_MinerMk1_C", "Desc_OreIron_C");
+    const a = splitter();
+    const b = splitter();
+    const eMinerA = belt(miner, a, 1);
+    const eAB = belt(a, b, 1, { sourceHandle: "out0" });
+    const g = graph([miner, a, b], [eMinerA, eAB]);
+    const r = computeFlows(g, dataset);
+    expect(eff(r, miner)).toBeCloseTo(0, 3);
+    expect(r.perEdge[eMinerA.id]?.actualRatePerMinute).toBeCloseTo(0, 4);
+    expect(r.perEdge[eAB.id]?.actualRatePerMinute).toBeCloseTo(0, 4);
+    expect(r.diagnostics.bottlenecks.some((x) => x.nodeId === miner.id)).toBe(true);
+    // nothing flows, so nothing vanishes as surplus either
+    expect(r.totals.unplannedSurplus.find((x) => x.itemClass === "Desc_OreIron_C") ?? null)
+      .toBeNull();
   });
 
   test("free sink: a lone extractor runs at 100% with its full rate as surplus", () => {
@@ -320,6 +349,41 @@ describe("computeFlows", () => {
     expect(kinds).toContain("building");
     expect(kinds).toContain("recipe");
     expect(r.diagnostics.brokenReferences.every((b) => b.nodeId === bad.id)).toBe(true);
+  });
+
+  test("a back-pressured merger does not starve an input-limited branch to 0%", () => {
+    resetIds();
+    // Two Smelter->Constructor chains reconverge at a Merger feeding a drain that
+    // pulls less than the branches can supply. The weak chain is input-limited; the
+    // strong chain is fully fed. Distributing the merger's pull in proportion to the
+    // inputs' back-pressured supply drives the weak branch into a self-fulfilling zero
+    // (it reads 0 supply, gets 0 pull, stays 0). The weak branch has real ore, so it
+    // must run — this mirrors the Screw merger collapse in plan 88778518.
+    const oreWeak = planInput("Desc_OreIron_C", 15); // half-feeds its Smelter
+    const oreStrong = planInput("Desc_OreIron_C", 30); // fully feeds its Smelter
+    const smW = machine("Build_SmelterMk1_C", "Recipe_IronIngot_C");
+    const smS = machine("Build_SmelterMk1_C", "Recipe_IronIngot_C");
+    const weak = machine("Build_ConstructorMk1_C", "Recipe_IronPlate_C");
+    const strong = machine("Build_ConstructorMk1_C", "Recipe_IronPlate_C");
+    const mg = merger();
+    const sink = planOutput("Desc_IronPlate_C", 20); // drains less than 10+20
+    const g = graph(
+      [oreWeak, oreStrong, smW, smS, weak, strong, mg, sink],
+      [
+        belt(oreWeak, smW, 6),
+        belt(oreStrong, smS, 6),
+        belt(smW, weak, 6),
+        belt(smS, strong, 6),
+        belt(weak, mg, 6, { targetHandle: "in0" }),
+        belt(strong, mg, 6, { targetHandle: "in1" }),
+        belt(mg, sink, 6),
+      ],
+    );
+    const r = computeFlows(g, dataset);
+    // The weak Constructor has ingot to run on and must not be parked at 0%.
+    expect(eff(r, weak)).toBeGreaterThan(1);
+    // The drain is satisfied from the combined supply.
+    expect(inRate(r, sink, "Desc_IronPlate_C")).toBeCloseTo(20, 3);
   });
 
   test("does not hang on a self-referential cycle and stays bounded", () => {

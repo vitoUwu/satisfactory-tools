@@ -72,13 +72,20 @@ describe("expandChain", () => {
 
   test("stops at an item already produced with surplus in the graph", () => {
     resetIds();
-    // An existing Smelter making 30 ingot/min with no consumers — pure surplus.
+    // An existing, fed Smelter making 30 ingot/min with no consumers — pure surplus.
+    const oreMiner = extractor("Build_MinerMk1_C", "Desc_OreIron_C");
     const existingSmelter = machine("Build_SmelterMk1_C", "Recipe_IronIngot_C");
     const constructor = machine("Build_ConstructorMk1_C", "Recipe_IronPlate_C");
     const sink = planOutput("Desc_IronPlate_C", 20);
     const g = graph(
-      [existingSmelter, constructor, sink],
-      [belt(constructor, sink)],
+      [oreMiner, existingSmelter, constructor, sink],
+      [
+        belt(oreMiner, existingSmelter, 1, {
+          sourceHandle: "out::Desc_OreIron_C",
+          targetHandle: "in::Desc_OreIron_C",
+        }),
+        belt(constructor, sink),
+      ],
     );
 
     const exp = expandChain(g, constructor.id, dataset, {});

@@ -86,8 +86,6 @@ const MAX_ITER = 500;
 const ALPHA = 0.5;
 /** Power-curve exponent used when a building omits its own. */
 const DEFAULT_POWER_EXPONENT = 1.321928;
-/** A Splitter has this many output ports; fewer connected edges means a free port. */
-const SPLITTER_OUT_PORTS = 3;
 
 function clamp01(x: number): number {
   if (Number.isNaN(x)) return 0;
@@ -275,15 +273,6 @@ export function solveFlows(graph: PlanGraph, dataset: DatasetIndex): FlowResult 
       if (item) push(tgt.inByItem, item, e.id);
     }
   }
-  // Extractors clamp their nominal output to the belt capacity of their outputs.
-  for (const rec of nodeRec.values()) {
-    if (rec.node.kind === "extractor" && rec.outEdges.length > 0) {
-      const beltSum = rec.outEdges.reduce((s, id) => s + (edgeCap.get(id) ?? 0), 0);
-      for (const [item, rate] of rec.nominalOut) {
-        rec.nominalOut.set(item, Math.min(rate, beltSum));
-      }
-    }
-  }
   // Generators: derive nominal fuel/supplemental consumption from the fuel item(s)
   // actually connected to their inputs.
   for (const rec of nodeRec.values()) {
@@ -318,17 +307,21 @@ export function solveFlows(graph: PlanGraph, dataset: DatasetIndex): FlowResult 
   }
 
   // ---- Fixed-point iteration -----------------------------------------------
-  // Cycle-carried fallbacks bracket the fixed point from opposite sides so a
-  // recycled loop relaxes to its true value instead of sticking at a degenerate
-  // zero: the supply chain starts pessimistic (0) and ramps up, the demand chain
-  // starts optimistic (full capacity) and ramps down.
+  // Cycle-carried fallbacks start optimistic (edge supply at 0 is the only
+  // pessimistic seed) so a coupled network relaxes toward the fair equilibrium
+  // where a shared shortfall is spread, instead of sticking at a degenerate zero
+  // where one branch of a splitter/merger is starved to 0% while its siblings run
+  // full. prevInEff/prevOutEff both seed at 1 and edge demand at full capacity.
   const prevSupply = new Map<string, number>();
   const prevDemand = new Map<string, number>();
   const prevInEff = new Map<string, number>();
   const prevOutEff = new Map<string, number>();
   let prevFlow = new Map<string, number>();
   for (const e of graph.edges) prevDemand.set(e.id, edgeCap.get(e.id) ?? 0);
-  for (const rec of nodeRec.values()) prevOutEff.set(rec.id, 1);
+  for (const rec of nodeRec.values()) {
+    prevOutEff.set(rec.id, 1);
+    prevInEff.set(rec.id, 1);
+  }
 
   // Per-iteration memo/stacks (rebound each pass).
   let supMemo = new Map<string, number>();
@@ -458,6 +451,30 @@ export function solveFlows(graph: PlanGraph, dataset: DatasetIndex): FlowResult 
     return supMemo.get(edgeId) ?? 0;
   }
 
+  /**
+   * How much of `edgeId`'s item its source can actually deliver, independent of
+   * any back-pressure the consumer imposes: a producer's input-limited output
+   * (`made * inEff`, NOT the fully-coupled `min(inEff, outEff)`). Mergers use this
+   * to share demand across inputs — capping by the coupled supply instead lets a
+   * momentarily-starved input read 0 supply, get 0 demand, and stay starved (a
+   * self-fulfilling zero); capping by deliverable supply spreads the shortfall.
+   */
+  function deliverableSupply(edgeId: string): number {
+    const e = edgeById.get(edgeId);
+    const item = edgeItem.get(edgeId);
+    if (!e || !item) return 0;
+    const src = nodeRec.get(e.source);
+    if (!src || src.broken) return 0;
+    if (src.kind === "splitter" || src.kind === "merger") {
+      return Math.min(edgeCap.get(edgeId) ?? 0, supplyCap(edgeId));
+    }
+    const nominal = src.nominalOut.get(item) ?? 0;
+    const eff =
+      src.kind === "extractor" || src.kind === "planInput" ? 1 : inEff(src.id);
+    const group = src.outByItem.get(item) ?? [edgeId];
+    return (nominal * eff) / group.length;
+  }
+
   function demandCap(edgeId: string): number {
     const m = demMemo.get(edgeId);
     if (m !== undefined) return m;
@@ -470,38 +487,29 @@ export function solveFlows(graph: PlanGraph, dataset: DatasetIndex): FlowResult 
       const tgt = nodeRec.get(e.target);
       if (tgt && !tgt.broken) {
         if (tgt.kind === "splitter") {
-          if (tgt.outEdges.length < SPLITTER_OUT_PORTS) {
-            // Free sink: a spare output port drains freely, so the splitter pulls
-            // at full connection capacity; connected branches keep priority and
-            // only the excess drains away (unplanned surplus).
-            for (const i of tgt.inEdges) demMemo.set(i, edgeCap.get(i) ?? 0);
-            result = demMemo.get(edgeId) ?? 0;
-          } else {
-            let total = 0;
-            for (const oe of tgt.outEdges) {
-              total += Math.min(edgeCap.get(oe) ?? 0, demandCap(oe));
-            }
-            const ins = tgt.inEdges;
-            const alloc = distributeEven(total, ins.map((i) => edgeCap.get(i) ?? 0));
-            ins.forEach((i, idx) => demMemo.set(i, alloc[idx] ?? 0));
-            result = demMemo.get(edgeId) ?? 0;
+          // Logistics only routes — it never free-sinks. A splitter pulls exactly
+          // what its connected outputs demand; with no output wired that is 0, so a
+          // dead-end splitter back-pressures its source to 0% (nowhere to drain).
+          let total = 0;
+          for (const oe of tgt.outEdges) {
+            total += Math.min(edgeCap.get(oe) ?? 0, demandCap(oe));
           }
+          const ins = tgt.inEdges;
+          const alloc = distributeEven(total, ins.map((i) => edgeCap.get(i) ?? 0));
+          ins.forEach((i, idx) => demMemo.set(i, alloc[idx] ?? 0));
+          result = demMemo.get(edgeId) ?? 0;
         } else if (tgt.kind === "merger") {
-          if (tgt.outEdges.length === 0) {
-            // Free sink: a merger with its output port unconnected drains freely.
-            for (const i of tgt.inEdges) demMemo.set(i, edgeCap.get(i) ?? 0);
-            result = demMemo.get(edgeId) ?? 0;
-          } else {
-            let total = 0;
-            for (const oe of tgt.outEdges) {
-              total += Math.min(edgeCap.get(oe) ?? 0, demandCap(oe));
-            }
-            const ins = tgt.inEdges;
-            const caps = ins.map((i) => Math.min(edgeCap.get(i) ?? 0, supplyCap(i)));
-            const alloc = distributeEven(total, caps);
-            ins.forEach((i, idx) => demMemo.set(i, alloc[idx] ?? 0));
-            result = demMemo.get(edgeId) ?? 0;
+          // Same as the splitter: a merger routes only, never free-sinks. With no
+          // output wired it demands 0, back-pressuring every input to 0%.
+          let total = 0;
+          for (const oe of tgt.outEdges) {
+            total += Math.min(edgeCap.get(oe) ?? 0, demandCap(oe));
           }
+          const ins = tgt.inEdges;
+          const caps = ins.map((i) => Math.min(edgeCap.get(i) ?? 0, deliverableSupply(i)));
+          const alloc = distributeEven(total, caps);
+          ins.forEach((i, idx) => demMemo.set(i, alloc[idx] ?? 0));
+          result = demMemo.get(edgeId) ?? 0;
         } else {
           // consumer (machine / generator / planOutput)
           const nominal = tgt.nominalIn.get(item) ?? 0;

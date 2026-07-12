@@ -39,6 +39,7 @@ import type {
   Recipe,
 } from "@satisfactory-tools/game-data";
 
+import { computeFlows, type FlowResult } from "./flow";
 import type {
   ExtractorNode,
   MachineNode,
@@ -92,7 +93,8 @@ export function expandChain(
   const targetRecipe = dataset.recipes[target.recipeClass];
   if (!targetRecipe) return { nodes: [], edges: [] };
 
-  const ctx = new ExpandContext(graph, dataset, recipePreferences);
+  const flow = computeFlows(graph, dataset);
+  const ctx = new ExpandContext(graph, dataset, recipePreferences, flow);
   const targetClock = target.clockSpeed / 100;
 
   // Seed the work queue with the target's unmet ingredient demand.
@@ -131,6 +133,7 @@ class ExpandContext {
     private readonly graph: PlanGraph,
     private readonly dataset: DatasetIndex,
     private readonly prefs: RecipePreferences,
+    private readonly flow: FlowResult,
   ) {
     this.initSurplus();
   }
@@ -315,31 +318,24 @@ class ExpandContext {
     else this.surplus.set(item, [entry]);
   }
 
-  /** Seed the surplus pool from producers already present in the graph. */
+  /**
+   * Seed the surplus pool from producer outputs that are not already feeding
+   * something. Spare is the ACTUAL steady-state production (a starved producer
+   * offers only what it really makes), so the planner builds enough new producers
+   * rather than oversubscribing an already-strained one.
+   */
   private initSurplus(): void {
-    const outEdgesOf = new Map<string, PlanEdge[]>();
+    const usedOutputs = new Set<string>();
     for (const e of this.graph.edges) {
-      const arr = outEdgesOf.get(e.source);
-      if (arr) arr.push(e);
-      else outEdgesOf.set(e.source, [e]);
+      usedOutputs.add(`${e.source} ${e.sourceHandle}`);
     }
     for (const node of this.graph.nodes) {
-      const outputs = this.nominalOutputs(node);
-      if (outputs.size === 0) continue;
-      for (const [item, made] of outputs) {
-        let consumed = 0;
-        for (const e of outEdgesOf.get(node.id) ?? []) {
-          if (e.sourceHandle !== `out::${item}`) continue;
-          const consumer = this.graph.nodes.find((n) => n.id === e.target);
-          if (consumer) consumed += this.nominalInputs(consumer).get(item) ?? 0;
-        }
-        const spare = made - consumed;
-        if (spare > EPSILON) {
-          this.addSurplus(item, {
-            ref: { nodeId: node.id, handle: `out::${item}` },
-            spare,
-          });
-        }
+      const actual = this.flow.perNode[node.id]?.actualOutputs ?? [];
+      for (const { itemClass: item, ratePerMinute: made } of actual) {
+        if (made <= EPSILON) continue;
+        const handle = `out::${item}`;
+        if (usedOutputs.has(`${node.id} ${handle}`)) continue;
+        this.addSurplus(item, { ref: { nodeId: node.id, handle }, spare: made });
       }
     }
   }
@@ -386,22 +382,6 @@ class ExpandContext {
       }
     }
     return out;
-  }
-
-  private nominalInputs(node: PlanNode): Map<string, number> {
-    const inp = new Map<string, number>();
-    if (node.kind === "planOutput") {
-      inp.set(node.itemClass, node.ratePerMinute);
-    } else if (node.kind === "machine" && node.recipeClass) {
-      const recipe = this.dataset.recipes[node.recipeClass];
-      if (recipe) {
-        const clockFrac = node.clockSpeed / 100;
-        for (const ing of recipe.ingredients) {
-          inp.set(ing.item, (inp.get(ing.item) ?? 0) + ing.ratePerMinute * clockFrac);
-        }
-      }
-    }
-    return inp;
   }
 
   // -- logistics (splitters / mergers / belts) -------------------------------
