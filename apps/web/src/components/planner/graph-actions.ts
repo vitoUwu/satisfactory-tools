@@ -55,8 +55,17 @@ export function graphReducer(state: PlanGraph, action: GraphAction): PlanGraph {
         ),
       };
 
-    case "addEdge":
-      return { ...state, edges: [...state.edges, action.edge] };
+    case "addEdge": {
+      // An input port takes exactly one belt; drop any edge already on this target port.
+      const kept = state.edges.filter(
+        (e) =>
+          !(
+            e.target === action.edge.target &&
+            e.targetHandle === action.edge.targetHandle
+          ),
+      );
+      return { ...state, edges: [...kept, action.edge] };
+    }
 
     case "removeEdge":
       return {
