@@ -16,6 +16,7 @@ import {
   getBezierPath,
   type EdgeProps,
 } from "@xyflow/react";
+import { X } from "lucide-react";
 
 import { SimpleSelect } from "../controls";
 import { fmtRate } from "../format";
@@ -89,7 +90,7 @@ export function BeltPipeEdge({
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
           className={cn(
-            "nodrag nopan pointer-events-auto absolute flex items-center gap-1 border bg-card/95 px-1.5 py-0.5 text-[10px] shadow-sm",
+            "group nodrag nopan pointer-events-auto absolute flex items-center gap-1 border bg-card/95 px-1.5 py-0.5 text-[10px] shadow-sm",
             over ? "border-destructive text-destructive" : "border-border",
           )}
         >
@@ -109,6 +110,14 @@ export function BeltPipeEdge({
             options={mkOptions}
             className="h-6 w-24"
           />
+          <button
+            type="button"
+            aria-label="Disconnect"
+            className="flex size-5 shrink-0 items-center justify-center border border-transparent text-muted-foreground opacity-0 transition hover:border-destructive hover:text-destructive group-hover:opacity-100"
+            onClick={() => dispatch({ type: "removeEdge", id })}
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
       </EdgeLabelRenderer>
     </>

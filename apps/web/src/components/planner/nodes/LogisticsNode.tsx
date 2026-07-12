@@ -49,6 +49,7 @@ function LogisticsNode({
     >
       <Icon className="size-6 text-primary" />
       <PortHandles
+        nodeId={id}
         inputs={inputPorts(node, dataset)}
         outputs={outputPorts(node, dataset)}
       />

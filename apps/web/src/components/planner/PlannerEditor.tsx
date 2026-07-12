@@ -9,6 +9,7 @@ import type { DatasetIndex } from "@satisfactory-tools/game-data";
 import type {
   Bottleneck,
   PlanGraph,
+  PlanNode,
   RecipePreferences,
 } from "@satisfactory-tools/planner-engine";
 import { computeFlows, expandChain } from "@satisfactory-tools/planner-engine";
@@ -19,6 +20,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { savePlanGraph } from "@/functions/plans";
 
 import { ClientOnly } from "./ClientOnly";
+import { newId } from "./factory";
 import { graphReducer, structuralKey } from "./graph-actions";
 import { Inspector } from "./Inspector";
 import { layoutExpansion } from "./layout";
@@ -45,7 +47,9 @@ export function PlannerEditor({
 }) {
   const [graph, dispatch] = useReducer(graphReducer, initialGraph);
   const [prefs, setPrefs] = useState<RecipePreferences>(recipePreferences);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [hoveredBottleneck, setHoveredBottleneck] = useState<Bottleneck | null>(
     null,
   );
@@ -137,6 +141,47 @@ export function PlannerEditor({
     return () => clearTimeout(timer);
   }, [graph, planId, prefs]);
 
+  // The Inspector edits one node at a time; it only engages when the selection
+  // is exactly one node (a marquee of many shows a summary instead).
+  const selectedNodeId =
+    selectedNodeIds.size === 1
+      ? (selectedNodeIds.values().next().value ?? null)
+      : null;
+
+  const deleteNodes = useCallback((ids: Iterable<string>) => {
+    for (const id of ids) dispatch({ type: "removeNode", id });
+    setSelectedNodeIds(new Set());
+  }, [dispatch]);
+
+  const duplicateNodes = useCallback((ids: Iterable<string>) => {
+    const idSet = new Set(ids);
+    if (idSet.size === 0) return;
+    const current = graphRef.current;
+    const OFFSET = 48;
+    // old id -> new id, so edges wholly inside the selection can be re-wired.
+    const idMap = new Map<string, string>();
+    const clones: PlanNode[] = [];
+    for (const n of current.nodes) {
+      if (!idSet.has(n.id)) continue;
+      const cloneId = newId();
+      idMap.set(n.id, cloneId);
+      clones.push({
+        ...n,
+        id: cloneId,
+        position: { x: n.position.x + OFFSET, y: n.position.y + OFFSET },
+      });
+    }
+    if (clones.length === 0) return;
+    for (const n of clones) dispatch({ type: "addNode", node: n });
+    for (const e of current.edges) {
+      const source = idMap.get(e.source);
+      const target = idMap.get(e.target);
+      if (!source || !target) continue; // only edges with both ends duplicated
+      dispatch({ type: "addEdge", edge: { ...e, id: newId("e"), source, target } });
+    }
+    setSelectedNodeIds(new Set(idMap.values()));
+  }, [dispatch]);
+
   // Memoized so renders that don't touch planner state (e.g. the save
   // indicator flipping) don't re-render every context consumer.
   const ctx = useMemo<PlannerContextValue>(
@@ -146,8 +191,11 @@ export function PlannerEditor({
       dispatch,
       flow,
       flowError,
+      selectedNodeIds,
+      setSelectedNodeIds,
       selectedNodeId,
-      setSelectedNodeId,
+      deleteNodes,
+      duplicateNodes,
       highlightedNodeIds,
       setHoveredBottleneck,
       brokenNodeIds,
@@ -160,7 +208,10 @@ export function PlannerEditor({
       graph,
       flow,
       flowError,
+      selectedNodeIds,
       selectedNodeId,
+      deleteNodes,
+      duplicateNodes,
       highlightedNodeIds,
       brokenNodeIds,
       prefs,

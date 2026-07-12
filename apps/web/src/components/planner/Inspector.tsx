@@ -14,7 +14,7 @@ import {
 import { Button } from "@satisfactory-tools/ui/components/button";
 import { Separator } from "@satisfactory-tools/ui/components/separator";
 import type { ItemRate, PlanNode } from "@satisfactory-tools/planner-engine";
-import { Trash2, Wand2 } from "lucide-react";
+import { Copy, Trash2, Wand2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -70,8 +70,46 @@ function RateList({ title, rates }: { title: string; rates: ItemRate[] }) {
 }
 
 export function Inspector() {
-  const { graph, dataset, dispatch, flow, selectedNodeId, setSelectedNodeId } =
-    usePlanner();
+  const {
+    graph,
+    dataset,
+    flow,
+    selectedNodeIds,
+    selectedNodeId,
+    deleteNodes,
+    duplicateNodes,
+  } = usePlanner();
+
+  // A marquee of several nodes shows a group summary instead of a per-node
+  // editor — editing heterogeneous nodes at once is ambiguous.
+  if (selectedNodeIds.size > 1) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 border-l border-border bg-sidebar p-4 text-center">
+        <div className="text-sm font-semibold uppercase tracking-wide">
+          {selectedNodeIds.size} nodes selected
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => duplicateNodes(selectedNodeIds)}
+          >
+            <Copy className="size-4" /> Duplicate
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-destructive"
+            onClick={() => deleteNodes(selectedNodeIds)}
+          >
+            <Trash2 className="size-4" /> Delete
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const node = graph.nodes.find((n) => n.id === selectedNodeId) ?? null;
 
   if (!node) {
@@ -97,10 +135,15 @@ export function Inspector() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => {
-            dispatch({ type: "removeNode", id: node.id });
-            setSelectedNodeId(null);
-          }}
+          onClick={() => duplicateNodes([node.id])}
+          aria-label="Duplicate node"
+        >
+          <Copy className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => deleteNodes([node.id])}
           aria-label="Delete node"
         >
           <Trash2 className="size-4 text-destructive" />

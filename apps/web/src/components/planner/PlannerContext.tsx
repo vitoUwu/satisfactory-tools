@@ -24,8 +24,19 @@ export interface PlannerContextValue {
   flow: FlowResult | null;
   /** Human-readable reason flow is unavailable (e.g. solver not implemented). */
   flowError: string | null;
+  /** Every currently selected node (React Flow owns selection; this mirrors it). */
+  selectedNodeIds: ReadonlySet<string>;
+  /** Replace the selected set (used for programmatic selection, e.g. context menu). */
+  setSelectedNodeIds: (ids: ReadonlySet<string>) => void;
+  /** The single node to inspect — non-null only when exactly one node is selected. */
   selectedNodeId: string | null;
-  setSelectedNodeId: (id: string | null) => void;
+  /** Remove the given nodes (and their edges) and clear the selection. */
+  deleteNodes: (ids: Iterable<string>) => void;
+  /**
+   * Clone the given nodes (offset slightly) plus any edges wholly between them,
+   * then select the copies. Used by the context menu's Duplicate action.
+   */
+  duplicateNodes: (ids: Iterable<string>) => void;
   /** Node ids highlighted because a hovered bottleneck implicates them. */
   highlightedNodeIds: ReadonlySet<string>;
   setHoveredBottleneck: (b: Bottleneck | null) => void;

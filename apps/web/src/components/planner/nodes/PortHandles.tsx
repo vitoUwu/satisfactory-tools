@@ -5,12 +5,13 @@
  */
 
 import { cn } from "@satisfactory-tools/ui/lib/utils";
-import { Handle, Position } from "@xyflow/react";
+import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
+import { useEffect } from "react";
 
 import type { PortSpec } from "../ports";
 import { mediumForForm } from "../ports";
 
-function mediumClass(form: PortSpec["form"]): string {
+export function mediumClass(form: PortSpec["form"]): string {
   const medium = mediumForForm(form);
   if (medium === "pipe") return "!bg-cyan-400 !border-cyan-200";
   if (medium === "belt") return "!bg-primary !border-primary-foreground";
@@ -23,12 +24,26 @@ function spread(count: number, index: number): string {
 }
 
 export function PortHandles({
+  nodeId,
   inputs,
   outputs,
 }: {
+  nodeId: string;
   inputs: PortSpec[];
   outputs: PortSpec[];
 }) {
+  // React Flow caches each node's handle bounds; when the port set changes
+  // (e.g. a machine's recipe is picked, adding/renaming handles) it must be told
+  // to re-measure, or edges to the new handles silently fail to render until a
+  // full remount (the "connected after refresh" desync).
+  const updateNodeInternals = useUpdateNodeInternals();
+  const signature = `${inputs.map((p) => p.id).join(",")}|${outputs
+    .map((p) => p.id)
+    .join(",")}`;
+  useEffect(() => {
+    updateNodeInternals(nodeId);
+  }, [nodeId, signature, updateNodeInternals]);
+
   return (
     <>
       {inputs.map((p, i) => (

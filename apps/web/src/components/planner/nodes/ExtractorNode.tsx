@@ -114,7 +114,7 @@ export function ExtractorNode({ id, selected }: NodeProps) {
           />
         </div>
       </div>
-      <PortHandles inputs={[]} outputs={outputPorts(node, dataset)} />
+      <PortHandles nodeId={id} inputs={[]} outputs={outputPorts(node, dataset)} />
     </NodeShell>
   );
 }

@@ -92,6 +92,7 @@ function BoundaryNode({
         </span>
       </div>
       <PortHandles
+        nodeId={id}
         inputs={inputPorts(node, dataset)}
         outputs={outputPorts(node, dataset)}
       />
